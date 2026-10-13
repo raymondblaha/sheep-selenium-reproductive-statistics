@@ -7,6 +7,8 @@ This repository is designed as a data-science portfolio artifact. It shows how t
 a manuscript-style R analysis into a reproducible public workflow with synthetic data,
 statistical test tables, a dashboard, and explicit study-design caveats.
 
+![Dashboard preview](docs/assets/dashboard_preview.png)
+
 The public data are synthetic. They mimic the structure of the original study but are not
 biological evidence.
 
