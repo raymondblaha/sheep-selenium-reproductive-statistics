@@ -38,6 +38,15 @@ def file_status(directory: Path, filenames: list[str]) -> dict[str, bool]:
     return {name: (directory / name).exists() for name in filenames}
 
 
+def missing_demo_files(data_dir: Path, output_dir: Path) -> list[str]:
+    data_status = file_status(data_dir, DATA_FILES)
+    output_status = file_status(output_dir, OUTPUT_FILES)
+    return [
+        *[str(data_dir / name) for name, exists in data_status.items() if not exists],
+        *[str(output_dir / name) for name, exists in output_status.items() if not exists],
+    ]
+
+
 def run_command(command: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         command,
@@ -76,6 +85,22 @@ def run_public_demo(data_dir: Path, output_dir: Path) -> tuple[bool, str]:
         if result.returncode != 0:
             return False, "\n".join(logs)
     return True, "\n".join(logs)
+
+
+def ensure_public_demo(data_dir: Path, output_dir: Path) -> None:
+    missing = missing_demo_files(data_dir, output_dir)
+    if not missing:
+        return
+
+    with st.spinner("Creating synthetic data and analysis outputs for the public demo..."):
+        ok, log = run_public_demo(data_dir, output_dir)
+    st.cache_data.clear()
+    if ok:
+        st.sidebar.success("Generated missing demo files.")
+    else:
+        st.error("The dashboard could not generate the public demo files.")
+        st.code(log, language="text")
+        st.stop()
 
 
 def show_sidebar_status(data_dir: Path, output_dir: Path) -> None:
@@ -139,7 +164,7 @@ def show_study_design(animals: pd.DataFrame | None) -> None:
         "measurements, baseline body weight, breeding-cycle outcomes, and final pregnancy."
     )
     if animals is None:
-        st.info("Run the synthetic-data generator to view design tables.")
+        st.info("Synthetic data are still missing. Use the sidebar button to generate demo files.")
         return
 
     design = (
@@ -172,7 +197,7 @@ def show_longitudinal(longitudinal: pd.DataFrame | None, tests: pd.DataFrame | N
         "with animal-level repeated measures."
     )
     if longitudinal is None:
-        st.info("Synthetic longitudinal data not found.")
+        st.info("Synthetic longitudinal data are still missing. Use the sidebar button to generate demo files.")
         return
 
     study = st.selectbox("Study", sorted(longitudinal["study"].unique()))
@@ -244,7 +269,15 @@ def show_reproduction(
 def show_hypotheses(tests: pd.DataFrame | None) -> None:
     st.subheader("4. Hypothesis Tests")
     if tests is None:
-        st.info("Analysis outputs not found.")
+        st.warning(
+            "Analysis outputs are still missing. Use the sidebar button to generate the "
+            "synthetic data and hypothesis-test tables."
+        )
+        st.code(
+            "python scripts/generate_synthetic_sheep_data.py\n"
+            "python scripts/analyze_sheep_stats.py",
+            language="bash",
+        )
         return
 
     priority = st.multiselect(
@@ -311,6 +344,8 @@ def main() -> None:
         if not output_dir.is_absolute():
             output_dir = ROOT / output_dir
         show_sidebar_status(data_dir, output_dir)
+
+    ensure_public_demo(data_dir, output_dir)
 
     animals = load_csv(str(data_dir / "synthetic_sheep_animals.csv"))
     longitudinal = load_csv(str(data_dir / "synthetic_sheep_longitudinal.csv"))
