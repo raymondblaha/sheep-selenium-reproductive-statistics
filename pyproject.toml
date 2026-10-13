@@ -1,0 +1,15 @@
+[project]
+name = "sheep-selenium-reproductive-statistics"
+version = "0.1.0"
+description = "Public-safe statistical analysis and dashboard for sheep selenium and reproductive outcomes."
+requires-python = ">=3.11"
+dependencies = [
+  "numpy",
+  "pandas",
+  "plotly",
+  "scipy",
+  "streamlit",
+]
+
+[tool.ruff]
+line-length = 96
