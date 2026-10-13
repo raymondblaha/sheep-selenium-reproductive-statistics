@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -12,6 +14,16 @@ import streamlit as st
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATA_DIR = ROOT / "data" / "sample"
 DEFAULT_OUTPUT_DIR = ROOT / "outputs" / "tables"
+DATA_FILES = [
+    "synthetic_sheep_animals.csv",
+    "synthetic_sheep_longitudinal.csv",
+]
+OUTPUT_FILES = [
+    "hypothesis_tests.csv",
+    "reproductive_outcomes.csv",
+    "pairwise_control_contrasts.csv",
+    "statistical_report.txt",
+]
 
 
 @st.cache_data
@@ -20,6 +32,93 @@ def load_csv(path: str) -> pd.DataFrame | None:
     if not p.exists():
         return None
     return pd.read_csv(p)
+
+
+def file_status(directory: Path, filenames: list[str]) -> dict[str, bool]:
+    return {name: (directory / name).exists() for name in filenames}
+
+
+def run_command(command: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        command,
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+
+
+def run_public_demo(data_dir: Path, output_dir: Path) -> tuple[bool, str]:
+    commands = [
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "generate_synthetic_sheep_data.py"),
+            "--output-dir",
+            str(data_dir),
+        ],
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "analyze_sheep_stats.py"),
+            "--data-dir",
+            str(data_dir),
+            "--output-dir",
+            str(output_dir),
+        ],
+    ]
+    logs = []
+    for command in commands:
+        result = run_command(command)
+        logs.append("$ " + " ".join(command))
+        if result.stdout:
+            logs.append(result.stdout.strip())
+        if result.stderr:
+            logs.append(result.stderr.strip())
+        if result.returncode != 0:
+            return False, "\n".join(logs)
+    return True, "\n".join(logs)
+
+
+def show_sidebar_status(data_dir: Path, output_dir: Path) -> None:
+    data_status = file_status(data_dir, DATA_FILES)
+    output_status = file_status(output_dir, OUTPUT_FILES)
+    missing_data = [name for name, exists in data_status.items() if not exists]
+    missing_outputs = [name for name, exists in output_status.items() if not exists]
+
+    st.subheader("Demo Files")
+    if not missing_data and not missing_outputs:
+        st.success("Synthetic data and analysis outputs are ready.")
+    elif missing_data:
+        st.warning("Synthetic data have not been generated yet.")
+    else:
+        st.warning("Synthetic data exist, but analysis outputs are missing.")
+
+    with st.expander("File status", expanded=bool(missing_data or missing_outputs)):
+        st.write("Synthetic data")
+        for name, exists in data_status.items():
+            st.caption(f"{'OK' if exists else 'missing'} - {name}")
+        st.write("Analysis outputs")
+        for name, exists in output_status.items():
+            st.caption(f"{'OK' if exists else 'missing'} - {name}")
+
+    if st.button("Generate synthetic data and analysis outputs", use_container_width=True):
+        with st.spinner("Running the public-safe demo pipeline..."):
+            ok, log = run_public_demo(data_dir, output_dir)
+        if ok:
+            st.cache_data.clear()
+            st.success("Demo files generated. Refreshing dashboard.")
+            st.code(log, language="text")
+            st.rerun()
+        else:
+            st.error("The demo pipeline failed. Terminal output is below.")
+            st.code(log, language="text")
+
+    with st.expander("Terminal commands"):
+        st.code(
+            "python scripts/generate_synthetic_sheep_data.py\n"
+            "python scripts/analyze_sheep_stats.py\n"
+            "streamlit run dashboard/app.py",
+            language="bash",
+        )
 
 
 def design_caveat() -> None:
@@ -204,18 +303,14 @@ def main() -> None:
     )
 
     with st.sidebar:
+        st.header("Public Demo")
         data_dir = Path(st.text_input("Synthetic data directory", str(DEFAULT_DATA_DIR.relative_to(ROOT))))
         output_dir = Path(st.text_input("Analysis output directory", str(DEFAULT_OUTPUT_DIR.relative_to(ROOT))))
         if not data_dir.is_absolute():
             data_dir = ROOT / data_dir
         if not output_dir.is_absolute():
             output_dir = ROOT / output_dir
-        st.code(
-            "python scripts/generate_synthetic_sheep_data.py\n"
-            "python scripts/analyze_sheep_stats.py\n"
-            "streamlit run dashboard/app.py",
-            language="bash",
-        )
+        show_sidebar_status(data_dir, output_dir)
 
     animals = load_csv(str(data_dir / "synthetic_sheep_animals.csv"))
     longitudinal = load_csv(str(data_dir / "synthetic_sheep_longitudinal.csv"))
